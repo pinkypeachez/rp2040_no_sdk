@@ -15,7 +15,7 @@ pico_sdk_init()
 
 #########
 add_executable(blink_simple
-        blink_simple.c
+        src/blink_simple.c
 )
 
 # pull in common dependencies
