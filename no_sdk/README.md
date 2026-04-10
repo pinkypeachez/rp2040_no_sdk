@@ -1,22 +1,65 @@
 
 ## Toolchain:
-1. **arm-none-eabi-gcc Cross-Compiler** [c --> elf]
+1. **```arm-none-eabi-gcc``` Cross-Compiler** [c --> elf]
+
 Mein Mac hat Apple M3 Prozessor [Arm A64], Raspi Pico nutzt Dual-ARM Cortex-M0+ [ARM32 ARMv6-M]
 
-Good to know *(arm-none-eabi-gcc)*
-arm: zielarchitektur
-none: es gibt kein OS, Code läuft nackt auf Hardware
-eabi: Embedded ABI (wie Funktionen Parameter übergeben etc..)
+Good to know *(arm-none-eabi-gcc)*:
+
+* arm: zielarchitektur
+* none: es gibt kein OS, Code läuft nackt auf Hardware
+* eabi: Embedded ABI (wie Funktionen Parameter übergeben etc..)
 
 
-1.2 brew install **elf2uf2** [elf --> uf2]
+1.2 **```brew install elf2uf2```** [elf --> uf2]
+
 elf und uf2 enthalten denselben Maschinencode! Unterschied in Metadaten
 .bin = nackter Maschinencode, rohe Bytes
 
+---------------------------------------------------------------------
+
 2. **Linker script [.ld]**
-Linker nimmt .o Dateien und legt die Sektionen an die Adressen basierend auf Linker script
-Code = im Flash (.text .rodata)
-Variablen = im RAM (.bss)
+
+Der Linker vom Pico: [pico-sdk GitHub](https://github.com/raspberrypi/pico-sdk/blob/master/src/rp2_common/pico_crt0/rp2040/memmap_default.ld)
+
+Im Folgenden die Ausschnitte aus dieser [guten Quelle](https://users.informatik.haw-hamburg.de/~krabat/FH-Labor/gnupro/5_GNUPro_Utilities/c_Using_LD/ldLinker_scripts.html):
+- linker script = text file
+- The linker script controls how ld combines all of your ```.o``` files into a single ```.elf``` and how that resulting ```.elf``` file gets loaded by the target processor.
+
+> Andere SEHR GUTE Quellen [hier](https://github.com/wntrblm/Castor_and_Pollux/blob/main/firmware/scripts/samd21g18a.ld) oder [hier](https://blog.thea.codes/the-most-thoroughly-commented-linker-script/)
+
+
+**SECTIONS**
+The simplest possible linker script has just one command:
+-  ```'SECTIONS'```: describe the memory layout of the output file
+
+> For example, let's say that the code should be loaded at address ` 0x10000 ', and that the data should start at address ` 0x8000000 '. The following linker script will do this function.
+``` 
+SECTIONS
+{
+. = 0x10000;
+.text : { *(.text) }
+. = 0x8000000;
+.data : { *(.data) }
+.bss : { *(.bss) }
+}
+```
+> ```. = 0x10000;```: The first line in the above example sets the special symbol ` . ', which is the location counter. 
+
+> ```.text : { *(.text) }```: Within the curly braces after the output section name, you list the names of the input sections, which should be placed into this output section.
+
+> ```*``` is a wildcard which matches any file name. The expression ```*(.text)``` means all .text input sections in all input files.
+
+**ENTRY POINT**
+- Entry Point: the first instruction to execute in a program.
+
+The argument is a symbol name:
+ 
+```ENTRY ( symbol )```
+
+
+
+**VEKTORTABELLE**
 
 *Vektortabelle*: Array von Funktionspointern 
 
