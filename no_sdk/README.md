@@ -79,6 +79,22 @@ void (*fp)() = sagHallo;
 fp();
 
 
+---------------------------------------------------------------------
+
+3. **Boot**
+
+Boot1 [Bootrom]: fest auf dem Silizium!!! ROM ab 0x00000000 Adresse --> die ersten 256 Bytes vom externen Flash (ab 0x10000000) werden gelesen
+
+(256 weil: es ist die Größe eines Flash-Sektors (page auf dem W25Q16JV))
+ABER RP2040 hat keinen internen Flash, sondern einen externen Flash-Chip [Winbond W25Q16JV] der über QSPI angebunden ist. Und ursprungliche Annahme ist Single SPI (und nicht Quad SPI)
+
+Boot2: Anweisungen mit Flash über QSPI zu kommunizieren. XIP aktiviert
+
+XIP Flash (Execute In Place Flash) = Prozessor kann Befehle direkt aus dem externen Flash ausführen
+
+*"External Flash is accessed via the QSPI interface using the execute-in-place(XIP) hardware. This allows an external flash memory to be addressed and accessed by the system as though it were internal memory."*
+
+3: Vektortabelle → Reset-Handler → main()
 
 RP2040 hat ROM, SRAM, Flash
 **SRAM:** 
@@ -105,16 +121,6 @@ https://docs.rs-online.com/068a/0900766b81622f8d.pdf
 - SRAM = Static RAM - Solange Strom fließt, bleibt das Bit gespeichert
 - DRAM = dynamic - speichert Daten in winzigen Kondensatoren, die ihre Ladung verlieren. Es muss tausende Male pro Sekunde "aufgefrischt" werden
 
-3. Build System
-Makefile
-
-
-4. Boot Problem
-Der Chip erwartet im Flash (ganz am Anfang) eine spezielle Prüfsumme und einen sogenannten Boot2-Stage.
-
-Der "Boot2"-Trick: Da die CPU nicht weiß, wie sie mit dem externen Flash-Chip reden soll (da jeder Hersteller leicht andere Befehle nutzt), liest der Pico-ROM die ersten 256 Bytes vom Flash ein. In diesen 256 Bytes muss ein winziges Programm stehen, das der CPU erklärt: "Hey, du hast einen Flash-Chip von Firma X mit Größe Y, benutze diese Befehle, um den Rest des Programms zu laden."
-
-
 
 "By writing values into a register - in other words, by writing a 32-bit value at a certain memory address, we can control how given peripheral should behave. By reading registers, we can read back peripheral's data or configuration."
 
@@ -126,17 +132,6 @@ Jeder Hardware-Block im RP2040 hat eine feste Adresse im Speicherbereich
 | 0x0    | RESET      | Reset control.    |
 | 0x4    | WDSEL      | Watchdog select.  |
 | 0x8    | RESET_DONE | Reset done.       |
-
-
-Was macht das Linker-Skript?
-
-Ein Mikrocontroller weiß nach dem Einschalten nicht, wo sein RAM oder Flash anfängt. Das Linker-Skript (Endung .ld) ist die Landkarte für den Compiler.
-
-Ein minimales Skript definiert:
-
-MEMORY: Die physikalischen Adressen. Beim RP2040 beginnt der Flash bei 0x10000000 und der SRAM bei 0x20000000.
-
-SECTIONS: Wo welche Teile Ihres Codes landen. Der "Vector Table" (die Liste der Startadressen für die CPU) muss ganz am Anfang stehen.
 
 
 

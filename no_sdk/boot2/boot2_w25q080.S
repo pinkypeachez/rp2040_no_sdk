@@ -30,14 +30,10 @@
 // ----------------------------------------------------------------------------
 // Config section
 // ----------------------------------------------------------------------------
-// It should be possible to support most flash devices by modifying this section
-
 // The serial flash interface will run at clk_sys/PICO_FLASH_SPI_CLKDIV.
 // This must be a positive, even integer.
 // The bootrom is very conservative with SPI frequency, but here we should be
 // as aggressive as possible.
-
-
 
 #ifndef PICO_FLASH_SPI_CLKDIV
 #define PICO_FLASH_SPI_CLKDIV 4
@@ -46,33 +42,33 @@
 #error PICO_FLASH_SPI_CLKDIV must be even
 #endif
 
+@ --- SPI-Controller [RP2040] Configuration [QUAD MODE] ---
+@ RP Datasheet 4.10.13 bzw S.599: CTRLR0 Register, 0x0 single, 0x1 dual, 0x2 Quad
+.equ SSI_CTRLR0_SPI_FRF_VALUE_QUAD,     0x2
+.equ FRAME_FORMAT,                      SSI_CTRLR0_SPI_FRF_VALUE_QUAD
 
-// --------------------------------- NEUE DEFINES
-#define SSI_CTRLR0_SPI_FRF_VALUE_QUAD _u(0x2)
+@ --- W25Q080 Flash Instruction Set [W25Q080 Datasheet] ---
+.equ CMD_READ,               0xeb         @ 10.2.13 "Fast Quad Read IO" instruction
+.equ CMD_WRITE_ENABLE,       0x06         @ 10.2.2 Instruction set
+.equ CMD_READ_STATUS,        0x05
+.equ CMD_READ_STATUS2,       0x35
+.equ CMD_WRITE_STATUS,       0x01
 
-// Define interface width: single/dual/quad IO
-// CTRLR0.SPI_FRF - Specifies the format in which the transmission happens for the frame.
-// QUELLE: 4.10.10.4.1. Write Operation in Enhanced SPI Modes
-// the number of bits transferred for each FIFO record 
+@ --- Status Register Configuration ---
+.equ SREG_DATA,              0x02  @ Enable quad-SPI mode
 
-#define FRAME_FORMAT SSI_CTRLR0_SPI_FRF_VALUE_QUAD
+@ --- Mode & Timing ---
+@ "Mode bits" are 8 special bits sent immediately after
+@ the address bits in a "Read Data Fast Quad I/O" command sequence. 
+@ On W25Q080, the four LSBs are don't care, and if MSBs == 0xa, the
+@ next read does not require the 0xeb instruction prefix TO REDUCE INSTRUCTION OVERHEAD
+.equ MODE_CONTINUOUS_READ,   0xa0
 
-// For W25Q080 this is the "Read data fast quad IO" instruction:
-#define CMD_READ 0xeb
+@ The number of address + mode bits, divided by 4 (always 4, not function of interface width).
+.equ ADDR_L,                 8
 
-// "Mode bits" are 8 special bits sent immediately after
-// the address bits in a "Read Data Fast Quad I/O" command sequence. 
-// On W25Q080, the four LSBs are don't care, and if MSBs == 0xa, the
-// next read does not require the 0xeb instruction prefix.
-#define MODE_CONTINUOUS_READ 0xa0
-
-// The number of address + mode bits, divided by 4 (always 4, not function of
-// interface width).
-#define ADDR_L 8
-
-// How many clocks of Hi-Z following the mode bits. For W25Q080, 4 dummy cycles
-// are required.
-#define WAIT_CYCLES 4
+@ How many clocks of Hi-Z following the mode bits. For W25Q080, 4 dummy cycles are required.
+.equ WAIT_CYCLES,            4
 
 // If defined, we will read status reg, compare to SREG_DATA, and overwrite
 // with our value if the SR doesn't match.
@@ -82,11 +78,6 @@
 // A better solution is to use a volatile SR write if your device supports it.
 #define PROGRAM_STATUS_REG
 
-#define CMD_WRITE_ENABLE 0x06
-#define CMD_READ_STATUS 0x05
-#define CMD_READ_STATUS2 0x35
-#define CMD_WRITE_STATUS 0x01
-#define SREG_DATA 0x02  // Enable quad-SPI mode
 
 // ----------------------------------------------------------------------------
 // Start of 2nd Stage Boot Code
@@ -110,10 +101,9 @@ regular_func _stage2_boot
     // - SCLK 8mA drive, no slew limiting
     // - SDx disable input Schmitt to reduce delay
 
-// --------------------------------- NEUE DEFINES
-    #define PADS_QSPI_BASE _u(0x40020000)
-    #define PADS_QSPI_GPIO_QSPI_SCLK_DRIVE_LSB    _u(4)
-    #define PADS_QSPI_GPIO_QSPI_SCLK_SLEWFAST_BITS   _u(0x00000001)
+    #define PADS_QSPI_BASE 0x40020000
+    #define PADS_QSPI_GPIO_QSPI_SCLK_DRIVE_LSB  4
+    #define PADS_QSPI_GPIO_QSPI_SCLK_SLEWFAST_BITS  0x00000001
 
     ldr r3, =PADS_QSPI_BASE
     movs r0, #(2 << PADS_QSPI_GPIO_QSPI_SCLK_DRIVE_LSB | PADS_QSPI_GPIO_QSPI_SCLK_SLEWFAST_BITS)
