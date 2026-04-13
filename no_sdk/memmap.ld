@@ -1,11 +1,8 @@
 /* Speicherbereiche laut Datasheet (2.2. Address Map, 2.6.3. Flash)*/
-FLASH_SIZE = 0x40000;      /* 2048kB, 262,144 bytes WZDGWIUDGWOIDWOH!!!!!!!!!!
-!!!!!!!!!!!!!!!!!!!!!!!efoeihoighroighoreighorieghoreihgerhgrehgreoighriehgeriog
-*/
-
 MEMORY
 {
-    FLASH(rx) : ORIGIN = 0x10000000, LENGTH = 2048k
+    boot2(rwxai): ORIGIN = 0x10000000, LENGTH = 256
+    FLASH(rx) : ORIGIN = 0x10000100, LENGTH = 2048k
     RAM(rwx)  : ORIGIN = 0x20000000, LENGTH = 264k
 }
 
@@ -13,10 +10,8 @@ MEMORY
 SECTIONS
 {
      .boot2 : {
-        __boot2_start__ = .;
-        KEEP (*(.boot2))
-        __boot2_end__ = .;
-    } > FLASH
+        *(.boot2)
+    } > boot2
     
     .text :
     {

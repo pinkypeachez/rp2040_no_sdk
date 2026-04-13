@@ -23,31 +23,67 @@
 // ----------------------------------------------------------------------------
 
 #include "pico/asm_helper.S"
-#include "hardware/regs/addressmap.h"
-#include "hardware/regs/ssi.h"
-#include "hardware/regs/pads_qspi.h"
 
-// ----------------------------------------------------------------------------
-// Config section
-// ----------------------------------------------------------------------------
-// The serial flash interface will run at clk_sys/PICO_FLASH_SPI_CLKDIV.
-// This must be a positive, even integer.
-// The bootrom is very conservative with SPI frequency, but here we should be
-// as aggressive as possible.
+@ [2.8.1.3. Flash Second Stage] "The flash 2nd stage must configure the SSI and the external flash for the best possible execute-in-place
+@ performance. This includes interface width, SCK frequency, SPI instruction prefix and an XIP continuation code for
+@ address-data only modes."
 
-#ifndef PICO_FLASH_SPI_CLKDIV
-#define PICO_FLASH_SPI_CLKDIV 4
-#endif
-#if PICO_FLASH_SPI_CLKDIV & 1
-#error PICO_FLASH_SPI_CLKDIV must be even
-#endif
+@ ----------------------------------------------------------------------------
+@ Config section
+@ ----------------------------------------------------------------------------
 
-@ --- SPI-Controller [RP2040] Configuration [QUAD MODE] ---
-@ RP Datasheet 4.10.13 bzw S.599: CTRLR0 Register, 0x0 single, 0x1 dual, 0x2 Quad
-.equ SSI_CTRLR0_SPI_FRF_VALUE_QUAD,     0x2
-.equ FRAME_FORMAT,                      SSI_CTRLR0_SPI_FRF_VALUE_QUAD
+@ --- Clock Configuration --- 
+@ integer divider of the system clock, p.122
+.ifndef PICO_FLASH_SPI_CLKDIV
+    .equ PICO_FLASH_SPI_CLKDIV, 4
+.endif
 
-@ --- W25Q080 Flash Instruction Set [W25Q080 Datasheet] ---
+.if (PICO_FLASH_SPI_CLKDIV & 1)
+    .error "PICO_FLASH_SPI_CLKDIV must be even"
+.endif
+
+@ ----------------------------------------------------------------------------
+@ SPI-Controller Configuration
+@ ----------------------------------------------------------------------------
+@ DesignWare Synchronous Serial Interface von Synopsys (DW_apb_ssi) is used as Basis for serial communication
+@ Avaliable protocols: (Motorola SPI / Texas Instruments  SSP / National Semiconductor Microwire) 
+@ Select the protocol by setting FRF (frame format) in CTRLR0 [Bit 5:4] - already set!!!
+@ As SPI in RP2040 is used for communication with external XIP Flash, Default Protocol is SPI and FRF is set to 0x0
+
+@ ---------- Configure SSI CTRLR0 Register:
+@ Set Quad Mode [Bit 22:21]:     0x0 single, 0x1 dual, 0x2 Quad Mode
+.equ SPI_FRAME_FORMAT,   0x2        
+.equ SSI_CTRLR0_SPI_FRF_LSB,    21     @ Offset [21:22 Bit]
+
+@ Set Transfer Mode TMOD [Bit 9:8]
+.equ SSI_CTRLR0_TMOD_LSB,               8      @ it says that TMOD value starts at Bit 8 (offset) 
+.equ SSI_CTRLR0_TMOD_VALUE_TX_AND_RX,   0x0    @ both transmit and receive logic are valid
+.equ SSI_CTRLR0_TMOD_VALUE_EEPROM_READ, 0x3
+
+@ Register SSI_CTRLR1 Master Control register 1
+.equ SSI_CTRLR1_OFFSET,   0x00000004
+
+@ ---------- Configure SPI CTRLR0 Register:
+.equ SSI_SPI_CTRLR0_TRANS_TYPE_LSB,         0        @ TRANS value start at Bit 0
+.equ SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_1C2A,  0x1      @ Command in standard SPI format, address in format specified by FRF
+.equ SSI_SPI_CTRLR0_TRANS_TYPE_VALUE_2C2A,  0x2      @ Command and address both in format specified by FRF    
+
+.equ SSI_CTRLR0_OFFSET, 0x00000000
+.equ SSI_DR0_OFFSET,    0x00000060          @ SSI Data Register 0
+
+.equ SSI_SPI_CTRLR0_OFFSET,           0x000000f4
+.equ SSI_SPI_CTRLR0_ADDR_L_LSB,       2
+.equ SSI_SPI_CTRLR0_INST_L_VALUE_8B,  0x2   @ 8 bit instruction length
+.equ SSI_SPI_CTRLR0_INST_L_LSB,       8     @ Offset instruction
+.equ SSI_SPI_CTRLR0_XIP_CMD_LSB,      24
+
+.equ SSI_SPI_CTRLR0_WAIT_CYCLES_LSB,  11    @Wait cycles between control frame transmit and data reception (in SCLK cycles)
+.equ SSI_SPI_CTRLR0_INST_L_VALUE_NONE, 0x0  @no instruction 
+@ ----------------------------------------------------------------------------
+@ W25Q080 Flash Configuration
+@ ----------------------------------------------------------------------------
+
+@ --- W25Q080 Flash Instruction Set  ---
 .equ CMD_READ,               0xeb         @ 10.2.13 "Fast Quad Read IO" instruction
 .equ CMD_WRITE_ENABLE,       0x06         @ 10.2.2 Instruction set
 .equ CMD_READ_STATUS,        0x05
@@ -62,7 +98,7 @@
 @ the address bits in a "Read Data Fast Quad I/O" command sequence. 
 @ On W25Q080, the four LSBs are don't care, and if MSBs == 0xa, the
 @ next read does not require the 0xeb instruction prefix TO REDUCE INSTRUCTION OVERHEAD
-.equ MODE_CONTINUOUS_READ,   0xa0
+.equ MODE_CONTINUOUS_READ,   0xa0    @ S. 569 RP Datasheet
 
 @ The number of address + mode bits, divided by 4 (always 4, not function of interface width).
 .equ ADDR_L,                 8
@@ -78,6 +114,30 @@
 // A better solution is to use a volatile SR write if your device supports it.
 #define PROGRAM_STATUS_REG
 
+    // Set pad configuration:
+    // - SCLK 8mA drive, no slew limiting
+    // - SDx disable input Schmitt to reduce delay
+
+.equ PADS_QSPI_BASE, 0x40020000
+.equ PADS_QSPI_GPIO_QSPI_SCLK_DRIVE_LSB,  4
+.equ PADS_QSPI_GPIO_QSPI_SCLK_SLEWFAST_BITS,  0x00000001
+.equ PADS_QSPI_GPIO_QSPI_SCLK_OFFSET, 0x00000004
+.equ PADS_QSPI_GPIO_QSPI_SD0_OFFSET, 0x00000008
+.equ PADS_QSPI_GPIO_QSPI_SD1_OFFSET, 0x0000000c
+.equ PADS_QSPI_GPIO_QSPI_SD2_OFFSET, 0x00000010
+.equ PADS_QSPI_GPIO_QSPI_SD3_OFFSET, 0x00000014
+
+.equ XIP_SSI_BASE, 0x18000000
+
+.equ SSI_SSIENR_OFFSET, 0x00000008
+
+.equ SSI_BAUDR_OFFSET, 0x00000014     @SSI BAUD_R
+
+.equ SSI_RX_SAMPLE_DLY_OFFSET, 0x000000f0   @ SSI_RX_SAMPLE_DLY, RX sample delay
+
+.equ PADS_QSPI_GPIO_QSPI_SD0_SCHMITT_BITS, 0x00000002
+
+.equ SSI_CTRLR0_DFS_32_LSB, 16
 
 // ----------------------------------------------------------------------------
 // Start of 2nd Stage Boot Code
@@ -96,14 +156,6 @@ pico_default_asm_setup
 // r3 holds SSI base, r0...2 used as temporaries. Other GPRs not used.
 regular_func _stage2_boot
     push {lr}
-
-    // Set pad configuration:
-    // - SCLK 8mA drive, no slew limiting
-    // - SDx disable input Schmitt to reduce delay
-
-    #define PADS_QSPI_BASE 0x40020000
-    #define PADS_QSPI_GPIO_QSPI_SCLK_DRIVE_LSB  4
-    #define PADS_QSPI_GPIO_QSPI_SCLK_SLEWFAST_BITS  0x00000001
 
     ldr r3, =PADS_QSPI_BASE
     movs r0, #(2 << PADS_QSPI_GPIO_QSPI_SCLK_DRIVE_LSB | PADS_QSPI_GPIO_QSPI_SCLK_SLEWFAST_BITS)
@@ -202,7 +254,7 @@ skip_sreg_programming:
 
 dummy_read:
 #define CTRLR0_ENTER_XIP \
-    (FRAME_FORMAT                          /* Quad I/O mode */                \
+    (SPI_FRAME_FORMAT                          /* Quad I/O mode */                \
         << SSI_CTRLR0_SPI_FRF_LSB) |                                          \
     (31 << SSI_CTRLR0_DFS_32_LSB)  |       /* 32 data bits */                 \
     (SSI_CTRLR0_TMOD_VALUE_EEPROM_READ     /* Send INST/ADDR, Receive Data */ \
